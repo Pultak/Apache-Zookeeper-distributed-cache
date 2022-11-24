@@ -37,25 +37,37 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
             `docker build client -t "#{BACKEND_IMAGE}"`
         end
     end
-#     config.vm.synced_folder ".", "/vagrant", type: "rsync", rsync__exclude: ".*/"
+
     config.ssh.insert_key = false
+
+    # Definition of Zoonode
+    config.vm.define "zoonode" do |s|
+        s.vm.network "private_network", ip: "#{SUBNET}100"
+        s.vm.hostname = "zoonode"
+        s.vm.provider "docker" do |d|
+          d.image = ZOONODE_IMAGE
+          d.name = "zoonode"
+          d.has_ssh = true
+        end
+        s.vm.post_up_message = "Node 'zoonode' up and running. You can access the node with 'vagrant ssh zoonode'}"
+    end
 
     CLIENTS_COUNT = 2^TREE_LEVEL - 1
     # Definition of root node
-    node_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + 1}"
-        node_name = "ROOT"
-        # Definition of BACKEND
-        config.vm.define node_name do |s|
-            s.vm.network "private_network", ip: node_ip_addr
-            s.vm.network "forwarded_port", guest: 80, host: 5000, host_ip: "0.0.0.0", auto_correct: true
-            s.vm.hostname = node_name
-            s.vm.provider "docker" do |d|
-                d.image = CLIENTS[:image]
-                d.name = node_name
-                d.has_ssh = true
-                d.env = { "PARENT_NODE" => "ROOT" }
-            end
-            s.vm.post_up_message = "Node #{node_name} up and running. You can access the node with 'vagrant ssh #{node_name}'}"
+    root_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + 1}"
+    root_name = "ROOT"
+    # Definition of BACKEND
+    config.vm.define root_name do |root|
+        root.vm.network "private_network", ip: root_ip_addr
+        root.vm.network "forwarded_port", guest: 80, host: 5000, host_ip: "0.0.0.0", auto_correct: true
+        root.vm.hostname = root_name
+        root.vm.provider "docker" do |d|
+            d.image = CLIENTS[:image]
+            d.name = root_name
+            d.has_ssh = true
+            d.env = { "PARENT_NODE" => "ROOT" }
+        end
+        root.vm.post_up_message = "Node #{root_name} up and running. You can access the node with 'vagrant ssh #{root_name}'}"
 
 
     # Definition of N backends
@@ -72,7 +84,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
                 d.image = CLIENTS[:image]
                 d.name = node_name
                 d.has_ssh = true
-                d.env = { "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + i}" }
+                d.env = { "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}" }
             end
             s.vm.post_up_message = "Node #{node_name} up and running. You can access the node with 'vagrant ssh #{node_name}'}"
         end
