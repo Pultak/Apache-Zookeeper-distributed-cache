@@ -1,7 +1,0 @@
-FROM ghcr.io/maxotta/kiv-ds-docker:latest
-
-RUN yum -q -y install python3
-RUN pip3 install requests
-
-COPY python /opt/backend
-# EOF

@@ -22,7 +22,7 @@ BACKEND_IMAGE  = "dshw/03/client:0.1"
 
 CLIENTS  = { :nameprefix => "client-",  # backend nodes get names: client-1, client-2, etc.
               :subnet => "10.0.1.",
-              :ip_offset => 0,  # backend nodes get IP addresses: 10.0.1.101, .102, .103, etc
+              :ip_offset => 100,  # backend nodes get IP addresses: 10.0.1.101, .102, .103, etc
               :image => BACKEND_IMAGE }
 
 # Number of "layers" of our cache tree:
@@ -42,7 +42,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     # Definition of Zoonode
     config.vm.define "zoonode" do |s|
-        s.vm.network "private_network", ip: "#{SUBNET}100"
+        s.vm.network "private_network", ip: "#{CLIENTS[:subnet]}100"
         s.vm.hostname = "zoonode"
         s.vm.provider "docker" do |d|
           d.image = ZOONODE_IMAGE
@@ -55,7 +55,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     CLIENTS_COUNT = 2^TREE_LEVEL - 1
     # Definition of root node
     root_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + 1}"
-    root_name = "ROOT"
+    root_name = "1#{CLIENTS[:nameprefix]}#{i}"
     # Definition of BACKEND
     config.vm.define root_name do |root|
         root.vm.network "private_network", ip: root_ip_addr
@@ -65,7 +65,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
             d.image = CLIENTS[:image]
             d.name = root_name
             d.has_ssh = true
-            d.env = { "PARENT_NODE" => "ROOT" }
+            d.env = { "PARENT_NODE" => "ROOT",
+                "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
+                "CLIENT_ID" => "1",
+                "CLIENT_COUNT" => "#{CLIENTS_COUNT}",
+                "ADDRESS_OFFSET" => "#{CLIENTS[:ip_offset]}",
+                "BASE_SUBNET" => "#{CLIENTS[:subnet]}"
+                 }
         end
         root.vm.post_up_message = "Node #{root_name} up and running. You can access the node with 'vagrant ssh #{root_name}'}"
 
@@ -84,7 +90,11 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
                 d.image = CLIENTS[:image]
                 d.name = node_name
                 d.has_ssh = true
-                d.env = { "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}" }
+                d.env = {
+                "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}",
+                "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
+                "CLIENT_ID" => "#{i}"
+                }
             end
             s.vm.post_up_message = "Node #{node_name} up and running. You can access the node with 'vagrant ssh #{node_name}'}"
         end
