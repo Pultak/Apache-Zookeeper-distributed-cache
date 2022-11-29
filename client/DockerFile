@@ -1,7 +1,3 @@
-#
-# Setup image with python client for master node and coloring of slave nodes accordingly
-#
-
 FROM ghcr.io/maxotta/kiv-ds-docker:latest
 
 RUN yum -q -y install python3
