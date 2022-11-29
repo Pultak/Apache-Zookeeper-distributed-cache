@@ -1,11 +1,11 @@
-# import the threading module
 import threading
 import logging
 import time
+from typing import Any
+
 import requests
 
 from threading import Lock
-import socket
 
 from enum import Enum
 
@@ -54,6 +54,7 @@ class CacheCoherenceThread(threading.Thread):
                     self.job_queue.pop(0)
             if job is not None:
                 job_type, job_value = job
+                logging.debug(f"Calling job: {job_type}|{job_value}")
                 self.job_switch[job_type](job_value)
             else:
                 time.sleep(self.sleep_time)
@@ -61,7 +62,7 @@ class CacheCoherenceThread(threading.Thread):
     def add_job(self, job_type, job):
         self.job_queue.append((job_type, job))
 
-    def get_root_value(self, key):
+    def get_root_value(self, key: Any):
         try:
             parameters = f"{URL_KEY_PARAMETER}={key}"
             res_address = f"http://{self.parent_address}:5000/receive?{parameters}"
@@ -73,7 +74,7 @@ class CacheCoherenceThread(threading.Thread):
             logging.error(f"Retrieving of key '{key}' from the root node {self.parent_address} failed due to {e}")
         return
 
-    def set_root_value(self, package):
+    def set_root_value(self, package: Any):
         key, value = package
 
         try:
@@ -82,12 +83,12 @@ class CacheCoherenceThread(threading.Thread):
             logging.debug("Sending HTTP PUT to %s " % res_address)
             x = requests.put(res_address).text
             logging.debug("Root node responded: %s" % x)
-            self.handle_root_response("value store", x)
+            self.handle_root_response(x)
         except Exception as e:
             logging.error(f"Storing of key '{key}' with value '{value}' to the root node {self.parent_address} failed due to {e}")
 
     @staticmethod
-    def handle_root_response(function_name, response):
+    def handle_root_response(response):
         if response == OK_RESPONSE:
             return
         elif response == BAD_REQUEST_RESPONSE:
@@ -98,15 +99,13 @@ class CacheCoherenceThread(threading.Thread):
             logging.error("Unknown response from root (%s)!" % response)
 
     def remove_root_value(self, key):
-        # todo
-
         try:
             parameters = f"{URL_KEY_PARAMETER}={key}"
             res_address = f"http://{self.parent_address}:5000/store?{parameters}"
-            logging.debug("Sending HTTP PUT to %s " % res_address)
-            x = requests.put(res_address).text
+            logging.debug("Sending HTTP DELETE to %s " % res_address)
+            x = requests.delete(res_address).text
             logging.debug("Root node responded: %s" % x)
-            self.handle_root_response("value store", x)
+            self.handle_root_response(x)
         except Exception as e:
             logging.error(
                 f"Storing of key '{key}' to the root node {self.parent_address} failed due to {e}")

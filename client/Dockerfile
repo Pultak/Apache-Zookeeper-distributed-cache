@@ -5,10 +5,11 @@ RUN yum -q -y install python3
 
 RUN pip3 install flask
 RUN pip3 install requests
+RUN pip3 install kazoo
 
 COPY python /opt/nodes
 COPY terminal /opt/terminal
 
-CMD /usr/bin/python3 /opt/nodes/main.py
+# CMD /usr/bin/python3 /opt/nodes/main.py
 
 # EOF

@@ -1,17 +1,17 @@
 import os
 
 import logging
-import socket
 import time
 from threading import Lock
 from typing import Any
 from kazoo.client import KazooClient
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 import cache_coherence
 
 # app core init ///////////////
+PARENT_SEARCH_ATTEMPT_COUNT = 5
 
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
                     level='DEBUG')
@@ -32,6 +32,7 @@ root_notifier = cache_coherence.CacheCoherenceThread(parent_address, sleep_time=
 
 
 def get_from_map(key) -> Any:
+    global values_map, values_map_lock
     with values_map_lock:
         if key in values_map:
             result = values_map[key]
@@ -42,6 +43,7 @@ def get_from_map(key) -> Any:
 
 
 def remove_from_map(key) -> bool:
+    global values_map, values_map_lock
     with values_map_lock:
         if key in values_map:
             logging.debug(f"Removing {key} from map")
@@ -53,6 +55,7 @@ def remove_from_map(key) -> bool:
 
 
 def store_in_map(key, value):
+    global values_map, values_map_lock
     with values_map_lock:
         values_map[key] = value
         last_changes_map[key] = [True, False]
@@ -60,7 +63,6 @@ def store_in_map(key, value):
 
 @app.put("/store/")
 def store_value():
-    global values_map
     if cache_coherence.URL_KEY_PARAMETER not in request.args.keys()\
             and cache_coherence.URL_VALUE_PARAMETER not in request.args.keys():
         return cache_coherence.BAD_REQUEST_RESPONSE
@@ -102,24 +104,52 @@ def remove_value():
         removed_flag = remove_from_map(key)
 
         if removed_flag is True:
-            root_notifier.add_job(cache_coherence.JobType.REMOVE, key)
+            if not root_flag:
+                root_notifier.add_job(cache_coherence.JobType.REMOVE, key)
             return cache_coherence.OK_RESPONSE
 
     return cache_coherence.NOT_FOUND_VALUE
 
 
-def register_to_zookeeper(zoo_keeper):
+def search_for_parent(zoo_keeper: KazooClient) -> str:
+
+    for i in range(0, PARENT_SEARCH_ATTEMPT_COUNT):
+        path_queue = ["/"]
+        logging.debug(f"Starting {i + 1}. attempt of the search for parent")
+        while len(path_queue) > 0:
+            curr_path = path_queue.pop()
+
+            # begin the search for parent node
+            data, stats = zoo_keeper.get(curr_path)
+            if stats.children_count > 0:
+                children = zoo_keeper.get_children(curr_path)
+                if parent_address in children:
+                    return f"{curr_path}/{parent_address}"
+                for addr in children:
+                    # add new paths to queue for future search
+                    path_queue.append(f"{curr_path}/{addr}")
+
+        # let's wait for a while. Maybe the parent connects
+        time.sleep(5)
+
+    return ""
+
+
+def register_to_zookeeper(zoo_keeper: KazooClient):
     # Start a Zookeeper session
     zoo_keeper.start()
 
-    # Create an ephemeral node with the same name as the hostname.
-    # If the '/ds/clients' context doesn't exist yet, it will be also created
-    zoo_keeper.create(f"/ds/clients/{socket.gethostname()}", ephemeral=True, makepath=True)
-    return
+    if root_flag:
+        zoo_keeper.create(f"/{node_address}", ephemeral=True, makepath=True)
+    else:
+        parent_path = search_for_parent(zoo_keeper)
+        if parent_path == "":
+            logging.error("Parent node not found inside zookeeper. Aborting!")
+            quit()
+        zoo_keeper.create(f"{parent_path}/{node_address}", ephemeral=True, makepath=True)
 
 
 if __name__ == '__main__':
-    global root_flag
 
     logging.info('Welcome to distributed binary tree cache client!')
 
@@ -133,9 +163,17 @@ if __name__ == '__main__':
     print(f"Client will use these Kazoo servers: {ensemble}.")
     # Create the client instance
     zk = KazooClient(hosts=ensemble)
+    register_to_zookeeper(zk)
 
-    # todo get/check correct address
+    if not root_flag:
+        # root doesnt need root notifier
+        root_notifier.start()
+    # flask run is blocking
     app.run(host=str(node_address))
 
+    if not root_flag:
+        # root doesnt need root notifier
+        root_notifier.running = False
+        root_notifier.join()
     # Close the session
     zk.stop()

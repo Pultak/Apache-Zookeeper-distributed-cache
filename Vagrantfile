@@ -16,7 +16,8 @@ unless Vagrant.has_plugin?("vagrant-docker-compose")
 end
 
 # Names of Docker images built:
-BACKEND_IMAGE  = "dshw/03/client:0.1"
+ZOONODE_IMAGE  = "dshw/zookeeper:0.1"
+BACKEND_IMAGE  = "dshw/client:0.1"
 
 # Node definitions
 
@@ -26,7 +27,7 @@ CLIENTS  = { :nameprefix => "client-",  # backend nodes get names: client-1, cli
               :image => BACKEND_IMAGE }
 
 # Number of "layers" of our cache tree:
-TREE_LEVEL = 3
+TREE_LEVEL = 2
 
 # Common configuration
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
@@ -35,6 +36,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         trigger.ruby do |env, machine|
             puts "Building node image:"
             `docker build client -t "#{BACKEND_IMAGE}"`
+
+            # Build Zoonode image:
+            puts "Building Zoonode image:"
+            `docker build zookeeper -t "#{ZOONODE_IMAGE}"`
         end
     end
 
@@ -55,7 +60,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     CLIENTS_COUNT = 2^TREE_LEVEL - 1
     # Definition of root node
     root_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + 1}"
-    root_name = "1#{CLIENTS[:nameprefix]}#{i}"
+    root_name = "root#{CLIENTS[:nameprefix]}1"
     # Definition of BACKEND
     config.vm.define root_name do |root|
         root.vm.network "private_network", ip: root_ip_addr
@@ -65,16 +70,18 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
             d.image = CLIENTS[:image]
             d.name = root_name
             d.has_ssh = true
-            d.env = { "PARENT_NODE" => "ROOT",
-                "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
-                "CLIENT_ID" => "1",
-                "CLIENT_COUNT" => "#{CLIENTS_COUNT}",
-                "ADDRESS_OFFSET" => "#{CLIENTS[:ip_offset]}",
-                "BASE_SUBNET" => "#{CLIENTS[:subnet]}"
+            d.env = {
+                "PARENT_NODE" => "ROOT"
+               # ,
+               # "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
+               # "CLIENT_ID" => "1",
+               # "CLIENT_COUNT" => "#{CLIENTS_COUNT}",
+               # "ADDRESS_OFFSET" => "#{CLIENTS[:ip_offset]}",
+               # "BASE_SUBNET" => "#{CLIENTS[:subnet]}"
                  }
         end
         root.vm.post_up_message = "Node #{root_name} up and running. You can access the node with 'vagrant ssh #{root_name}'}"
-
+    end
 
     # Definition of N backends
     (2..CLIENTS_COUNT).each do |i|
@@ -91,9 +98,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
                 d.name = node_name
                 d.has_ssh = true
                 d.env = {
-                "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}",
-                "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
-                "CLIENT_ID" => "#{i}"
+                "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}"
+#                 ,
+#                 "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
+#                 "CLIENT_ID" => "#{i}"
                 }
             end
             s.vm.post_up_message = "Node #{node_name} up and running. You can access the node with 'vagrant ssh #{node_name}'}"
