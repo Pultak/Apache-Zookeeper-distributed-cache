@@ -10,6 +10,6 @@ RUN pip3 install kazoo
 COPY python /opt/nodes
 COPY terminal /opt/terminal
 
-# CMD /usr/bin/python3 /opt/nodes/main.py
+CMD /usr/bin/python3 /opt/nodes/main.py
 
 # EOF

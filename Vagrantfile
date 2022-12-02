@@ -57,7 +57,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         s.vm.post_up_message = "Node 'zoonode' up and running. You can access the node with 'vagrant ssh zoonode'}"
     end
 
-    CLIENTS_COUNT = 2^TREE_LEVEL - 1
+    CLIENTS_COUNT = (2**TREE_LEVEL) - 1
+
+    puts "The tree with #{TREE_LEVEL} layers will have #{CLIENTS_COUNT} nodes in total"
     # Definition of root node
     root_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + 1}"
     root_name = "root#{CLIENTS[:nameprefix]}1"
@@ -71,16 +73,16 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
             d.name = root_name
             d.has_ssh = true
             d.env = {
-                "PARENT_NODE" => "ROOT"
-               # ,
-               # "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
-               # "CLIENT_ID" => "1",
-               # "CLIENT_COUNT" => "#{CLIENTS_COUNT}",
-               # "ADDRESS_OFFSET" => "#{CLIENTS[:ip_offset]}",
-               # "BASE_SUBNET" => "#{CLIENTS[:subnet]}"
+               "PARENT_NODE" => "ROOT",
+               "NODE_ADDRESS" => "#{root_ip_addr}",
+               "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
+               "CLIENT_ID" => "1",
+               "CLIENT_COUNT" => "#{CLIENTS_COUNT + 1}",
+               "ADDRESS_OFFSET" => "#{CLIENTS[:ip_offset]}",
+               "BASE_SUBNET" => "#{CLIENTS[:subnet]}"
                  }
         end
-        root.vm.post_up_message = "Node #{root_name} up and running. You can access the node with 'vagrant ssh #{root_name}'}"
+        root.vm.post_up_message = "Node #{root_name} up and running. You can access the node with 'docker exec -it  #{root_name} bash'}"
     end
 
     # Definition of N backends
@@ -98,13 +100,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
                 d.name = node_name
                 d.has_ssh = true
                 d.env = {
-                "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}"
-#                 ,
-#                 "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100",
-#                 "CLIENT_ID" => "#{i}"
+                "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}",
+                "NODE_ADDRESS" => "#{node_ip_addr}",
+                "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100"
                 }
             end
-            s.vm.post_up_message = "Node #{node_name} up and running. You can access the node with 'vagrant ssh #{node_name}'}"
+            s.vm.post_up_message = "Node #{node_name} up and running. You can access the node with 'docker exec -it #{node_name} bash'}"
         end
     end
 end

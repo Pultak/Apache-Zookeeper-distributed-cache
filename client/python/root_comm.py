@@ -25,7 +25,7 @@ class JobType(Enum):
     GET = 2
 
 
-class CacheCoherenceThread(threading.Thread):
+class RootSignalerThread(threading.Thread):
     def __init__(self, parent_address, sleep_time, cache_update):
         threading.Thread.__init__(self)
         self.running = True
@@ -67,7 +67,7 @@ class CacheCoherenceThread(threading.Thread):
             parameters = f"{URL_KEY_PARAMETER}={key}"
             res_address = f"http://{self.parent_address}:5000/receive?{parameters}"
             logging.debug("Sending HTTP GET to %s " % res_address)
-            x = requests.put(res_address).text
+            x = requests.get(res_address).text
             logging.debug("Root node responded: %s" % x)
             return x
         except Exception as e:

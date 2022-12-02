@@ -27,11 +27,11 @@ class RequestType(Enum):
     DELETE = 2
 
 
-def setup_url(node_address, key_param, value_param) -> str:
+def setup_url(node_address, key_param, value_param, endpoint) -> str:
     parameters = f"key={key_param}"
     if value_param is not None:
         parameters += f"&value={value_param}"
-    res_address = f"http://{node_address}:5000/store?{parameters}"
+    res_address = f"http://{node_address}:5000/{endpoint}?{parameters}"
     return res_address
 
 
@@ -63,10 +63,10 @@ base_subnet = os.environ["BASE_SUBNET"]
 
 cache_nodes = []
 for i in range(1, client_count):
-    cache_nodes.append(base_subnet + str(address_offset + client_count))
+    cache_nodes.append(base_subnet + str(address_offset + i))
 
 logging.info("Welcome to client application for control of the cache nodes!")
-logging.info(f"It should be possible to connect to these nodes: {cache_nodes}")
+logging.info(f"It should be possible to connect to following nodes: {cache_nodes}")
 logging.info(USAGE_MESSAGE)
 
 if len(cache_nodes) < 1:
@@ -74,9 +74,10 @@ if len(cache_nodes) < 1:
     quit()
 
 while running:
-    line = sys.stdin.readline()
+    line = input("Insert new command here:")
     print("\n")
-    tokens = line.split(" ", 2)
+    tokens = line.split(" ", 3)
+    logging.info(f"Tokens: {tokens}")
 
     if len(tokens) > 0:
         action = tokens[0]
@@ -85,15 +86,15 @@ while running:
                 node_id = int(tokens[1])
                 key = tokens[2]
                 value = tokens[3]
-                execute_http_request(setup_url(cache_nodes[node_id], key, value), RequestType.PUT)
+                execute_http_request(setup_url(cache_nodes[node_id], key, value, "store"), RequestType.PUT)
             elif action == "get" and len(tokens) == 3:
                 node_id = int(tokens[1])
                 key = tokens[2]
-                execute_http_request(setup_url(cache_nodes[node_id], key, None), RequestType.GET)
+                execute_http_request(setup_url(cache_nodes[node_id], key, None, "receive"), RequestType.GET)
             elif action == "delete" and len(tokens) == 3:
                 node_id = int(tokens[1])
                 key = tokens[2]
-                execute_http_request(setup_url(cache_nodes[node_id], key, None), RequestType.DELETE)
+                execute_http_request(setup_url(cache_nodes[node_id], key, None, "remove"), RequestType.DELETE)
             elif action == "exit":
                 running = False
                 break
