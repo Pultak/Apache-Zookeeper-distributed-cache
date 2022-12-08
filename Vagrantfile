@@ -27,7 +27,9 @@ CLIENTS  = { :nameprefix => "client-",  # backend nodes get names: client-1, cli
               :image => BACKEND_IMAGE }
 
 # Number of "layers" of our cache tree:
-TREE_LEVEL = 2
+TREE_LEVEL = 3
+
+PARENT_ADDRESS = "10.0.1.55"
 
 # Common configuration
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
@@ -49,6 +51,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vm.define "zoonode" do |s|
         s.vm.network "private_network", ip: "#{CLIENTS[:subnet]}100"
         s.vm.hostname = "zoonode"
+        s.vm.network "forwarded_port", guest: 80, host: 5000, host_ip: "0.0.0.0", auto_correct: true
         s.vm.provider "docker" do |d|
           d.image = ZOONODE_IMAGE
           d.name = "zoonode"
@@ -61,7 +64,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     puts "The tree with #{TREE_LEVEL} layers will have #{CLIENTS_COUNT} nodes in total"
     # Definition of root node
-    root_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + 1}"
+    root_ip_addr = PARENT_ADDRESS
     root_name = "root#{CLIENTS[:nameprefix]}1"
     # Definition of BACKEND
     config.vm.define root_name do |root|
@@ -87,7 +90,6 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
     # Definition of N backends
     (2..CLIENTS_COUNT).each do |i|
-        parent_id = i / 2
         node_ip_addr = "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + i}"
         node_name = "#{CLIENTS[:nameprefix]}#{i}"
         # Definition of BACKEND
@@ -100,7 +102,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
                 d.name = node_name
                 d.has_ssh = true
                 d.env = {
-                "PARENT_NODE" => "#{CLIENTS[:subnet]}#{CLIENTS[:ip_offset] + parent_id}",
+                "PARENT_NODE" => root_ip_addr,
                 "NODE_ADDRESS" => "#{node_ip_addr}",
                 "ZOO_SERVERS" => "#{CLIENTS[:subnet]}100"
                 }

@@ -6,6 +6,8 @@ RUN yum -q -y install python3
 RUN pip3 install flask
 RUN pip3 install requests
 RUN pip3 install kazoo
+RUN pip3 install flask_restx
+RUN pip3 install ipaddress
 
 COPY python /opt/nodes
 COPY terminal /opt/terminal

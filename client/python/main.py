@@ -1,24 +1,21 @@
-import json
+import ipaddress
 import logging
 import time
 import os
 
-from pprint import pprint
 from threading import Lock
 from typing import Any
 
 # ZOOKEEPER
 from kazoo.client import KazooClient
 
-# OPEN API
-
 # REST SERVER
 from flask import request
 from flask import Flask
 from flask_restx import Resource, Api
 
-
 import root_comm
+from tree_node import TreeNode
 
 # app core init ///////////////
 PARENT_SEARCH_ATTEMPT_COUNT = 5
@@ -30,23 +27,24 @@ app = Flask(__name__)
 api = Api(app)
 
 try:
-    parent_address = os.environ['PARENT_NODE']
+    tree_root_address = os.environ['PARENT_NODE']
     node_address = os.environ['NODE_ADDRESS']
     ensemble = os.environ['ZOO_SERVERS']
 except Exception as e:
-    parent_address = "ROOT"
+    tree_root_address = "ROOT"
     node_address = "localhost"
     ensemble = "None"
     logging.info("Core environment variables not found. Executing in yaml generation mode. Exception " + e.__str__())
 
 root_flag = False
+root_node = None
 
 values_map = {}
 values_map_lock = Lock()
 
 last_changes_map = {}
 
-root_notifier = root_comm.RootSignalerThread(parent_address, sleep_time=5, cache_update=20)
+root_notifier = root_comm.RootSignalerThread(sleep_time=5, cache_update=20)
 
 
 def get_from_map(key) -> Any:
@@ -78,6 +76,29 @@ def store_in_map(key, value):
         values_map[key] = value
         last_changes_map[key] = [True, False]
 
+
+
+@app.route("/getParent/")
+def get_parent():
+    if not root_flag:
+        return root_comm.METHOD_NOT_ALLOWED_RESPONSE, 405
+
+    new_address = request.args.get('nodeName')
+    try:
+        ipaddress.ip_address(new_address)
+    except Exception as ex:
+        logging.error(f"Invalid get_parent request. Invalid IP address passed! {ex}")
+        return root_comm.BAD_REQUEST_RESPONSE, 400
+    result = root_node.search_for_childless(new_address)
+
+    if result is None:
+        # something failed miserably
+        return root_comm.TEAPOT_RESPONSE, 418
+
+
+    logging.info(f"Assigning parent '{result.address}' to node '{new_address}'")
+    result.add_child(new_address)
+    return result.address, 200
 
 @api.route("/store/")
 class StoringValue(Resource):
@@ -132,13 +153,9 @@ class RetrievingValue(Resource):
                 return str(val), 200
             elif not root_flag:
                 logging.debug(f"The key '{key}' is not stored in this cache. Lets ask our parent")
-                parent_value = root_notifier.get_root_value(key)
-                return_code = 204
-                if parent_value != root_comm.NOT_FOUND_VALUE:
-                    store_in_map(key, parent_value)
-                    return_code = 200
-                logging.info(f"For key '{key}' returning value received from parent")
-                return parent_value, return_code
+                parent_response, status_code = root_notifier.get_root_value(key)
+                logging.info(f"For key '{key}' parent {root_node} responded: {status_code}, {parent_response}")
+                return parent_response, status_code
         return root_comm.NOT_FOUND_VALUE, 204
 
 
@@ -177,7 +194,7 @@ def search_for_parent(zoo_keeper: KazooClient) -> str:
     """
     for i in range(0, PARENT_SEARCH_ATTEMPT_COUNT):
         path_queue = ["/"]
-        logging.debug(f"Starting {i + 1}. attempt of the search for parent")
+        logging.debug(f"Starting {i + 1}. attempt of the search for ZooKeeper parent")
         while len(path_queue) > 0:
             curr_path = path_queue.pop()
 
@@ -185,8 +202,8 @@ def search_for_parent(zoo_keeper: KazooClient) -> str:
             data, stats = zoo_keeper.get(curr_path)
             if stats.children_count > 0:
                 children = zoo_keeper.get_children(curr_path)
-                if parent_address in children:
-                    return f"{curr_path}/{parent_address}"
+                if root_notifier.parent_address in children:
+                    return f"{curr_path}/{root_notifier.parent_address}"
                 for addr in children:
                     # add new paths to queue for future search
                     path_queue.append(f"{curr_path}/{addr}")
@@ -202,27 +219,48 @@ def register_to_zookeeper(zoo_keeper: KazooClient):
     zoo_keeper.start()
 
     if root_flag:
-        zoo_keeper.create(f"/{node_address}",
-                          # ephemeral=True,  # ephemeral -> means this node cant have children
-                          makepath=True)
+        if not zoo_keeper.exists(f"/{node_address}"):
+            logging.info("Creating new node inside ZooKeeper tree structure")
+            zoo_keeper.create(f"/{node_address}",
+                              # ephemeral=True,  # ephemeral -> means this node cant have children
+                              makepath=True)
     else:
         parent_path = search_for_parent(zoo_keeper)
         if parent_path == "":
             logging.error("Parent node not found inside zookeeper. Aborting!")
             quit()
-        zoo_keeper.create(f"{parent_path}/{node_address}", makepath=True)
+        new_full_path = f"{parent_path}/{node_address}"
+        if not zoo_keeper.exists(new_full_path):
+            logging.info("Creating new node inside ZooKeeper tree structure")
+            zoo_keeper.create(new_full_path, makepath=True)
+
+
+def get_parent_address():
+
+    # 5 attempts to get parent address
+    for i in range(0, 5):
+
+        response = root_notifier.ask_tree_root_for_parent(tree_root_address, node_address)
+        if response is not None:
+            root_notifier.parent_address = response
+            break
 
 
 if __name__ == '__main__':
 
     logging.info('Welcome to distributed binary tree cache client!')
 
-    if parent_address == "ROOT":
+    if tree_root_address == "ROOT":
         # this client is root
         root_flag = True
         logging.info('Im ROOT of the tree (' + node_address + ')!')
+        root_node = TreeNode(node_address, None)
     else:
-        logging.info('Im LEAF of the tree (' + node_address + ')! My parent is ' + parent_address)
+        get_parent_address()
+        logging.info('Im LEAF of the tree (' + node_address + ')! My parent is ' + root_notifier.parent_address)
+        if root_notifier.parent_address is None:
+            logging.error("My parent is None! Cant continue")
+            quit()
 
     print(f"Client will use these Kazoo servers: {ensemble}.")
     # Create the client instance

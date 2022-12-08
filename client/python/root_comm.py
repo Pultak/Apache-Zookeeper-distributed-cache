@@ -14,6 +14,8 @@ URL_KEY_PARAMETER = "key"
 URL_VALUE_PARAMETER = "value"
 
 BAD_REQUEST_RESPONSE = "400"
+METHOD_NOT_ALLOWED_RESPONSE = "405"
+TEAPOT_RESPONSE = "418"
 OK_RESPONSE = "200"
 
 NOT_FOUND_VALUE = "None"
@@ -26,7 +28,7 @@ class JobType(Enum):
 
 
 class RootSignalerThread(threading.Thread):
-    def __init__(self, parent_address, sleep_time, cache_update):
+    def __init__(self, sleep_time, cache_update, parent_address = None):
         threading.Thread.__init__(self)
         self.running = True
 
@@ -44,7 +46,7 @@ class RootSignalerThread(threading.Thread):
 
     # helper function to execute the threads
     def run(self):
-        logging.info("Cache Coherence Thread started!")
+        logging.info("Root Coherence Thread started!")
         while self.running:
 
             job = None
@@ -65,11 +67,11 @@ class RootSignalerThread(threading.Thread):
     def get_root_value(self, key: Any):
         try:
             parameters = f"{URL_KEY_PARAMETER}={key}"
-            res_address = f"http://{self.parent_address}:5000/receive?{parameters}"
+            res_address = f"http://{self.parent_address}:5000/receive/?{parameters}"
             logging.debug("Sending HTTP GET to %s " % res_address)
-            x = requests.get(res_address).text
-            logging.debug("Root node responded: %s" % x)
-            return x
+            x = requests.get(res_address)
+            logging.debug("Root node responded: %s" % x.text)
+            return x.text, x.status_code
         except Exception as e:
             logging.error(f"Retrieving of key '{key}' from the root node {self.parent_address} failed due to {e}")
         return
@@ -79,7 +81,7 @@ class RootSignalerThread(threading.Thread):
 
         try:
             parameters = f"{URL_KEY_PARAMETER}={key}&{URL_VALUE_PARAMETER}={value}"
-            res_address = f"http://{self.parent_address}:5000/store?{parameters}"
+            res_address = f"http://{self.parent_address}:5000/store/?{parameters}"
             logging.debug("Sending HTTP PUT to %s " % res_address)
             x = requests.put(res_address).text
             logging.debug("Root node responded: %s" % x)
@@ -98,10 +100,32 @@ class RootSignalerThread(threading.Thread):
         else:
             logging.error("Unknown response from root (%s)!" % response)
 
+
+    @staticmethod
+    def ask_tree_root_for_parent(root_address, node_address):
+        try:
+            parameters = f"nodeName={node_address}"
+            res_address = f"http://{root_address}:5000/getParent/?{parameters}"
+            logging.debug("Sending HTTP GET to %s " % res_address)
+            x = requests.get(res_address).text
+            logging.debug("Root node responded: %s" % x)
+
+            if x == METHOD_NOT_ALLOWED_RESPONSE:
+                logging.debug("Root does not consider himself as root and cant assign us parent")
+            elif x == TEAPOT_RESPONSE:
+                logging.debug("HE is a TEAPOT?")
+            else:
+                return x
+            return None
+        except Exception as e:
+            logging.error(
+                f"Getting parent address from tree root '{root_address}' failed due to {e}")
+
+
     def remove_root_value(self, key):
         try:
             parameters = f"{URL_KEY_PARAMETER}={key}"
-            res_address = f"http://{self.parent_address}:5000/store?{parameters}"
+            res_address = f"http://{self.parent_address}:5000/remove/?{parameters}"
             logging.debug("Sending HTTP DELETE to %s " % res_address)
             x = requests.delete(res_address).text
             logging.debug("Root node responded: %s" % x)
