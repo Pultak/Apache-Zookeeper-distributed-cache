@@ -30,7 +30,7 @@ def setup_url(node_address, key_param, value_param, endpoint) -> str:
     parameters = f"key={key_param}"
     if value_param is not None:
         parameters += f"&value={value_param}"
-    res_address = f"http://{node_address}:5000/{endpoint}?{parameters}"
+    res_address = f"http://{node_address}:5000/{endpoint}/?{parameters}"
     return res_address
 
 
