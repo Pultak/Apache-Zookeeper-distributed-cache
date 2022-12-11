@@ -149,12 +149,12 @@ class RetrievingValue(Resource):
         if key is not None:
             val = get_from_map(key)
             if val is not None:
-                logging.info(f"For key '{key}' returning value")
-                return str(val), 200
+                logging.info(f"For key '{key}' returning value '{val}'")
+                return val, 200
             elif not root_flag:
                 logging.debug(f"The key '{key}' is not stored in this cache. Lets ask our parent")
                 parent_response, status_code = root_notifier.get_root_value(key)
-                logging.info(f"For key '{key}' parent {root_node} responded: {status_code}, {parent_response}")
+                logging.info(f"For key '{key}' parent {root_notifier.parent_address} responded: {status_code}, {parent_response}")
                 return parent_response, status_code
         return root_comm.NOT_FOUND_VALUE, 204
 

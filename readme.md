@@ -144,15 +144,68 @@ kde:
 Po spuštění cache systému dochází root uzlem k přiřazování adres:
 ![img_3.png](images/img_3.png)
 
-Po přiřazení adres se jednotlivé uzly pokouší (maximálně 5x) zaregistrovat do ZooKeeperu pod stanoveného rodiče.
+Po přiřazení adres se jednotlivé uzly pokouší (maximálně 5x) zaregistrovat do ZooKeeperu pod konfigurací stanoveného rodiče.
 
 ![img.png](images/zookeeperAssign.png)
 
+Jakmile dojde k registraci u Zookepera, začne aplikace poslouchat na adrese, která byla přiřazena přes systémové proměnné.
 
 
+Předpokládáme-li že máme strom se třemi úrovněmi, můžeme vložit hodnotu do jednoho z nejzanořenějších uzlů.
+Využijeme k tomu funkcionalitu vygenerovaného Swaggeru. Přidáme klíč "klic" s hodnotou "potato":
 
-![img_2.png](images/img_2.png)
+![img.png](images/swaggerPut.png)
+
+V logu jednotlivých uzlů můžeme spatřit, že hodnota "probublává" až k rodičovskému uzlu:
+10.0.1.107 (client-7):
+![img.png](images/put1.png)
+10.0.1.103 (client-3):
+![img.png](images/put2.png)
+10.0.1.55 (rootclient-1):
+![img.png](images/put3.png)
+
+Nyní můžeme z uzlu z "opačné" strany stromu zavolat metody GET:
+
+![img.png](images/swaggerGet.png)
+
+V logu opět můžeme spatřit jak se jednotlivé hodnoty získávájí od rodičovských uzlů:
+10.0.1.104 (client-4):
+![img.png](images/get1.png)
+10.0.1.102 (client-2):
+![img.png](images/get2.png)
+10.0.1.55 (rootclient-1):
+![img.png](images/get3.png)
 
 
+Nakonec můžeme zkusit funkci DELETE, která odstraní záznam "klic"":
+
+![img.png](images/deleteSwagger.png)
+
+10.0.1.104 (client-4):
+![img.png](images/delete1.png)
+10.0.1.102 (client-2):
+![img.png](images/delete2.png)
+10.0.1.55 (rootclient-1):
+![img.png](images/delete3.png)
+
+
+Nyní po odstranění se můžeme dotázat rodičovského uzlu o hodnotu pod klíčem "klic". 
+Od něj však získáme návratový kód 204, tudíž hodnota se již v cache nenachází:
+
+![img.png](images/swaggerGet2.png)
+
+Hodnota se však ještě nachází ve větvy ve které nedošlo k aktualizaci.
+Možné řešení tohoto problému je zmíněno v následující sekci.
 
 ## Cache coherence
+
+Jednou z možných a lehce proveditelných způsobů aktualizace cache může být periodické dotazování rodičovského uzlu.
+Aby však nedocházelo při každém dotazu k přepisování celé cache, musel by si rodičovských uzel ukládat seznam změn, které nebyly propsány do jednotlivých potomků.
+To by však navýšilo pamětovou náročnost célé aplikace. V naše malém a nenáročném úkolu by se něco takového jentak neprojevilo.
+Problém by mohl nastat až u řádově větších systémů.
+
+Rodičovský uzel by si tedy ukládal mapu s posledními změněnými klíčy, kde hodnoty k těmto klíčům by značily kteří potomci si musí tuto hodnotu aktualizovat při dalším dotazu.
+Potomek by se pak periodicky dotazoval rodiče, který by mu poskytnul seznam klíčů, o které si musí opětovně zažádat. 
+Pokud má pod sebou další potomky, tak tyto hodnoty uloží do mapy ve stejném principu jako jeho rodič.
+Změny se tak postupně projeví v každém z uzlů.  
+

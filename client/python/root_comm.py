@@ -13,10 +13,10 @@ from enum import Enum
 URL_KEY_PARAMETER = "key"
 URL_VALUE_PARAMETER = "value"
 
-BAD_REQUEST_RESPONSE = "400"
-METHOD_NOT_ALLOWED_RESPONSE = "405"
-TEAPOT_RESPONSE = "418"
-OK_RESPONSE = "200"
+BAD_REQUEST_RESPONSE = 400
+METHOD_NOT_ALLOWED_RESPONSE = 405
+TEAPOT_RESPONSE = 418
+OK_RESPONSE = 200
 
 NOT_FOUND_VALUE = "None"
 
@@ -71,7 +71,7 @@ class RootSignalerThread(threading.Thread):
             logging.debug("Sending HTTP GET to %s " % res_address)
             x = requests.get(res_address)
             logging.debug("Root node responded: %s" % x.text)
-            return x.text, x.status_code
+            return x.text.strip().replace("\"", ""), x.status_code
         except Exception as e:
             logging.error(f"Retrieving of key '{key}' from the root node {self.parent_address} failed due to {e}")
         return
@@ -85,7 +85,7 @@ class RootSignalerThread(threading.Thread):
             logging.debug("Sending HTTP PUT to %s " % res_address)
             x = requests.put(res_address).text
             logging.debug("Root node responded: %s" % x)
-            self.handle_root_response(x)
+            self.handle_root_response(int(x))
         except Exception as e:
             logging.error(f"Storing of key '{key}' with value '{value}' to the root node {self.parent_address} failed due to {e}")
 
@@ -129,7 +129,7 @@ class RootSignalerThread(threading.Thread):
             logging.debug("Sending HTTP DELETE to %s " % res_address)
             x = requests.delete(res_address).text
             logging.debug("Root node responded: %s" % x)
-            self.handle_root_response(x)
+            self.handle_root_response(int(x))
         except Exception as e:
             logging.error(
                 f"Storing of key '{key}' to the root node {self.parent_address} failed due to {e}")
